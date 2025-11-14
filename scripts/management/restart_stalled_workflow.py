@@ -12,7 +12,9 @@ import sys
 import asyncio
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+# Add repo root to path (go up two levels from scripts/management/)
+repo_root = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(repo_root))
 
 from src.core.database import DatabaseManager, Task
 from src.core.simple_config import get_config

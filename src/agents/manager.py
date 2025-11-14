@@ -137,14 +137,16 @@ class AgentManager:
                 token = os.getenv(token_env_var)
 
                 if token:
+                    base_url = getattr(self.config, 'glm_api_base_url', 'https://api.z.ai/api/anthropic')
+                    model_name = getattr(self.config, 'glm_model_name', 'GLM-4.6')
                     env_vars = {
-                        'ANTHROPIC_BASE_URL': 'https://api.z.ai/api/anthropic',
+                        'ANTHROPIC_BASE_URL': base_url,
                         'ANTHROPIC_AUTH_TOKEN': token,
-                        'ANTHROPIC_DEFAULT_SONNET_MODEL': 'GLM-4.6',
-                        'ANTHROPIC_DEFAULT_OPUS_MODEL': 'GLM-4.6',
-                        'ANTHROPIC_DEFAULT_HAIKU_MODEL': 'GLM-4.6',
+                        'ANTHROPIC_DEFAULT_SONNET_MODEL': model_name,
+                        'ANTHROPIC_DEFAULT_OPUS_MODEL': model_name,
+                        'ANTHROPIC_DEFAULT_HAIKU_MODEL': model_name,
                     }
-                    logger.info(f"Setting up GLM-4.6 environment variables for agent {agent_id}")
+                    logger.info(f"Setting up GLM environment variables for agent {agent_id} (base_url: {base_url}, model: {model_name})")
                 else:
                     logger.warning(f"GLM model configured but {token_env_var} not found, using standard Claude")
 
@@ -902,14 +904,16 @@ REMEMBER:
                 token = os.getenv(token_env_var)
 
                 if token:
+                    base_url = getattr(self.config, 'glm_api_base_url', 'https://api.z.ai/api/anthropic')
+                    model_name = getattr(self.config, 'glm_model_name', 'GLM-4.6')
                     env_vars = {
-                        'ANTHROPIC_BASE_URL': 'https://api.z.ai/api/anthropic',
+                        'ANTHROPIC_BASE_URL': base_url,
                         'ANTHROPIC_AUTH_TOKEN': token,
-                        'ANTHROPIC_DEFAULT_SONNET_MODEL': 'GLM-4.6',
-                        'ANTHROPIC_DEFAULT_OPUS_MODEL': 'GLM-4.6',
-                        'ANTHROPIC_DEFAULT_HAIKU_MODEL': 'GLM-4.6',
+                        'ANTHROPIC_DEFAULT_SONNET_MODEL': model_name,
+                        'ANTHROPIC_DEFAULT_OPUS_MODEL': model_name,
+                        'ANTHROPIC_DEFAULT_HAIKU_MODEL': model_name,
                     }
-                    logger.info(f"Setting up GLM-4.6 environment variables for restarted agent {agent_id}")
+                    logger.info(f"Setting up GLM environment variables for restarted agent {agent_id} (base_url: {base_url}, model: {model_name})")
 
             # Set MCP_TOOL_TIMEOUT if workflow has human approval enabled
             # This only applies to Claude Code agents

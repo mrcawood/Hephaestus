@@ -71,6 +71,8 @@ class Config:
         self.default_cli_tool = agents.get('default_cli_tool', 'claude')
         self.cli_model = agents.get('cli_model', 'sonnet')
         self.glm_api_token_env = agents.get('glm_api_token_env', 'GLM_API_TOKEN')
+        self.glm_api_base_url = agents.get('glm_api_base_url', 'https://api.z.ai/api/anthropic')  # Default to z.ai, can override
+        self.glm_model_name = agents.get('glm_model_name', 'GLM-4.6')  # Model identifier (e.g., 'zai-org/glm-4.6' for Novita AI)
         self.tmux_session_prefix = agents.get('tmux_session_prefix', 'agent')
         self.agent_health_check_interval = agents.get('health_check_interval', 60)
         self.max_health_check_failures = agents.get('max_health_failures', 3)

@@ -1097,8 +1097,27 @@ class WorktreeManager:
 
         logger.info(f"[WORKTREE] Parent worktree found at: {parent_worktree.worktree_path}")
 
+        # Check if parent worktree path actually exists
+        if not Path(parent_worktree.worktree_path).exists():
+            logger.warning(
+                f"[WORKTREE] Parent worktree path does not exist: {parent_worktree.worktree_path}\n"
+                f"  Parent worktree status: {parent_worktree.merge_status}\n"
+                f"  This likely means the worktree was cleaned up. Attempting to use parent's branch/commit from database."
+            )
+            # Try to use parent's branch or commit from database instead of falling back to main
+            return self._get_parent_commit_from_database(parent_id, parent_worktree, session)
+
         # Open parent worktree repository
-        parent_repo = Repo(parent_worktree.worktree_path)
+        try:
+            parent_repo = Repo(parent_worktree.worktree_path)
+        except Exception as e:
+            logger.warning(
+                f"[WORKTREE] Failed to open parent worktree repository: {e}\n"
+                f"  Path: {parent_worktree.worktree_path}\n"
+                f"  Attempting to use parent's branch/commit from database."
+            )
+            # Try to use parent's branch or commit from database instead of falling back to main
+            return self._get_parent_commit_from_database(parent_id, parent_worktree, session)
 
         # Check if parent worktree belongs to the same main repository
         # Worktrees have a .git file pointing to the main repo's .git/worktrees directory
@@ -1186,6 +1205,101 @@ class WorktreeManager:
             current_sha = parent_repo.head.commit.hexsha
             logger.info(f"[WORKTREE] No uncommitted changes in parent, using current HEAD: {current_sha}")
             return current_sha
+
+    def _get_parent_commit_from_database(
+        self, parent_id: str, parent_worktree: AgentWorktree, session: Session
+    ) -> Optional[str]:
+        """Get parent commit SHA from database when worktree path doesn't exist.
+        
+        This method attempts to preserve knowledge inheritance by using the parent's
+        branch or commit information from the database instead of falling back to main.
+        
+        Args:
+            parent_id: Parent agent ID
+            parent_worktree: Parent worktree database record
+            session: Database session
+            
+        Returns:
+            Commit SHA if found, None if we should fall back to main
+        """
+        logger.info(f"[WORKTREE] Attempting to get parent commit from database for {parent_id}")
+        
+        # Strategy 1: Try to use the parent's branch if it still exists in git
+        # The branch is preserved even after worktree cleanup (branch_preserved: True)
+        branch_name = parent_worktree.branch_name
+        try:
+            # Check if branch exists in the main repository
+            # Use try/except instead of checking all refs for efficiency
+            branch_ref = self.main_repo.refs[branch_name]
+            commit_sha = branch_ref.commit.hexsha
+            logger.info(
+                f"[WORKTREE] Found parent branch '{branch_name}' in git repository\n"
+                f"  Using commit: {commit_sha}\n"
+                f"  This preserves the parent's work for child inheritance."
+            )
+            return commit_sha
+        except (AttributeError, IndexError, KeyError):
+            logger.debug(f"[WORKTREE] Parent branch '{branch_name}' not found in git refs")
+        except Exception as e:
+            logger.warning(f"[WORKTREE] Failed to access parent branch '{branch_name}': {e}")
+        
+        # Strategy 2: Use merge_commit_sha if the worktree was merged
+        if parent_worktree.merge_commit_sha:
+            try:
+                # Verify the commit exists in the repository
+                commit = self.main_repo.commit(parent_worktree.merge_commit_sha)
+                logger.info(
+                    f"[WORKTREE] Using parent's merge commit: {parent_worktree.merge_commit_sha}\n"
+                    f"  This preserves the parent's merged work for child inheritance."
+                )
+                return parent_worktree.merge_commit_sha
+            except Exception as e:
+                logger.warning(f"[WORKTREE] Merge commit {parent_worktree.merge_commit_sha} not found: {e}")
+        
+        # Strategy 3: Get the latest WorktreeCommit record for the parent agent
+        # This includes checkpoint commits, final commits, etc.
+        latest_commit = session.query(WorktreeCommit).filter_by(
+            agent_id=parent_id
+        ).order_by(WorktreeCommit.created_at.desc()).first()
+        
+        if latest_commit:
+            try:
+                # Verify the commit exists in the repository
+                commit = self.main_repo.commit(latest_commit.commit_sha)
+                logger.info(
+                    f"[WORKTREE] Using parent's latest commit from WorktreeCommit: {latest_commit.commit_sha}\n"
+                    f"  Commit type: {latest_commit.commit_type}\n"
+                    f"  This preserves the parent's latest work for child inheritance."
+                )
+                return latest_commit.commit_sha
+            except Exception as e:
+                logger.warning(f"[WORKTREE] Latest commit {latest_commit.commit_sha} not found: {e}")
+        
+        # Strategy 4: Use parent_commit_sha or base_commit_sha from the database record
+        for commit_field, field_name in [
+            (parent_worktree.parent_commit_sha, "parent_commit_sha"),
+            (parent_worktree.base_commit_sha, "base_commit_sha"),
+        ]:
+            if commit_field:
+                try:
+                    # Verify the commit exists in the repository
+                    commit = self.main_repo.commit(commit_field)
+                    logger.info(
+                        f"[WORKTREE] Using parent's {field_name}: {commit_field}\n"
+                        f"  This preserves the parent's base state for child inheritance."
+                    )
+                    return commit_field
+                except Exception as e:
+                    logger.debug(f"[WORKTREE] {field_name} {commit_field} not found: {e}")
+        
+        # If all strategies fail, return None to fall back to main branch
+        logger.warning(
+            f"[WORKTREE] Could not find any valid parent commit from database for {parent_id}\n"
+            f"  Parent worktree status: {parent_worktree.merge_status}\n"
+            f"  Branch: {branch_name}\n"
+            f"  Falling back to main branch. Child will not inherit parent's work."
+        )
+        return None
 
     def _resolve_conflicts_newest_wins(
         self,
